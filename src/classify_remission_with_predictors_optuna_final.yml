@@ -1,0 +1,120 @@
+raw_data: 'source.csv'
+# data with no missing values, rows with missing values dropped
+data_complete_cases: 'complete.csv'
+# data with missing values, must be imputed
+data_missing_cases: 'data_withmissing.csv'
+missing_value: -999
+impute: True
+bootstraps: 5
+tags: # for optuna
+        - imputed
+        - smalle
+        - trials20
+categorical: 
+        - txintensity
+        - txdelivery
+        - txparinvolve
+        - txexperience
+model: # which feature sets to use, listed under #features
+        - minimal
+        - total_scale_more
+        - subscale_child
+        - subscale_mother
+        - treatment
+features:
+    minimal:
+        # absence/presence of type of anxiety disorder
+        # total scale
+        - asoc
+        - aocd
+        - asad
+        - aag
+        - aspec
+        - agad
+        - apanic
+        ##---------
+        # absence/presence of comorbid disorders
+        - acommood
+        - aextdis
+        - anumanx
+        # demographics
+        - dacageyrs # -999
+    subscale_child:
+        - acscassp 
+        - acscasoc
+        - acscassa
+        - acscaspi
+        - acscasga
+        - acscaspa
+    subscale_mother:
+        - amscassa
+        - amscaspi
+        - amscasga
+        - amscaspa
+        - amscassp
+        - amscasoc
+    total_scale_more:
+        # scas
+        - amscasto
+        - acscasto
+        # dass
+        - famdasstot
+        # smfq
+        - amsmfqtot
+        - acsmfqtot
+        # sdq
+        - amsdqtot
+        - acsdqtot
+        ## father vars
+        ## dass
+        #- fafdasstot
+        ## sdq
+        #- adsdqtot
+        ## smfq
+        #- adsmfqtot
+        ## scas
+        #- adscasto
+        #
+        # others to include
+        # mother
+        #- famdassa
+        #- famdassd
+        #- famdasss
+        ## father
+        #- fafdassa
+        #- fafdassd
+        #- fafdasss
+    treatment:
+        - txintensity
+        - txdelivery
+        - txparinvolve
+        - txexperience
+    diagnosis_subscale_more:
+        - amsdqpp
+        - amsdqcp
+        - amsdqps
+        - amsdqes
+        - amsdqhs
+    #most_missing:
+    #    # father vars
+    #    - adscaspi
+    #    - adscasga
+    #    - adscassa
+    #    - adscassp
+    #    - adscaspa
+    #    - adscasoc
+    #    - adsdqpp 
+    #    - adsdqcp 
+    #    - adsdqps 
+    #    - adsdqes 
+    #    - adsdqhs 
+outcomes:
+        #- anxcat
+        # not present
+        - pranxfree
+        #- diagfree
+        # this one did not work
+        # also eanx not present, and renamed canxcat to canx
+        - anxcat
+n_trials: 15
+timeout: 300
