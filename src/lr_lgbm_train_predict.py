@@ -80,7 +80,7 @@ def update_scores(scores, y_val, preds, preds_prob):
 
 
 def main():
-   '''
+    '''
     Main function to execute the machine learning pipeline.
 
     This function orchestrates the entire machine learning workflow:
@@ -101,7 +101,7 @@ def main():
     and can handle various preprocessing steps like imputation and encoding.
     Results are logged both to console and to Neptune (if enabled) for each
     model-outcome combination.
-	'''
+    '''
     start_time = datetime.now()
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', help='runtime configurations', type=str)
