@@ -44,10 +44,64 @@ from ECE import ece_score
 
 neptune_object = neptune.init('--set to path')
 
+def get_models_and_distributions():
+    models = [
+        ('lr', lambda: LogisticRegression(solver='saga', max_iter=500)),
+        ('lgbm', lambda: LGBMClassifier()),
+    ]
+    
+    distributions = {
+        'lr': {
+            'C': optuna.distributions.LogUniformDistribution(1e-3, 100),
+            'penalty': optuna.distributions.CategoricalDistribution(['l2', 'l1', 'elasticnet', 'none']),
+            'l1_ratio': optuna.distributions.CategoricalDistribution([0.1, 0.2, 0.5, 0.7, 0.9]),
+        },
+        'lgbm': {
+            'max_depth': optuna.distributions.IntUniformDistribution(3, 30),
+            'feature_fraction': optuna.distributions.UniformDistribution(0.1, 1.0),
+            'learning_rate': optuna.distributions.LogUniformDistribution(0.005, 0.6),
+            'num_leaves': optuna.distributions.IntUniformDistribution(10, 300),
+            "subsample": optuna.distributions.CategoricalDistribution([0.6, 0.8, 1.0]),
+            "reg_alpha": optuna.distributions.UniformDistribution(0.01, 9),
+            "reg_lambda": optuna.distributions.UniformDistribution(0.01, 9),
+        }
+    }
+    
+    return models, distributions
+
+
+def update_scores(scores, y_val, preds, preds_prob):
+    scores['roc'].append(metrics.roc_auc_score(y_val, preds_prob))
+    scores['f1'].append(metrics.f1_score(y_val, preds))
+    scores['acc'].append(metrics.accuracy_score(y_val, preds))
+    precision, recall, _ = metrics.precision_recall_curve(y_val, preds_prob)
+    scores['pr_auc'].append(metrics.auc(recall, precision))
+    scores['ece'].append(ece_score(preds_prob, y_val))
+
 
 def main():
-    '''
-    '''
+   '''
+    Main function to execute the machine learning pipeline.
+
+    This function orchestrates the entire machine learning workflow:
+    1. Parses command-line arguments and loads configuration.
+    2. Initializes experiment tracking with Neptune (if enabled).
+    3. Loads and preprocesses the dataset.
+    4. Iterates over specified outcome variables:
+        a. Prepares data for the current outcome.
+        b. Trains and evaluates multiple machine learning models:
+            - Performs hyperparameter optimization.
+            - Conducts cross-validation.
+            - Calibrates models.
+            - Computes various performance metrics.
+    5. Logs results and best parameters for each model and outcome.
+    6. Tracks total execution time.
+
+    The function supports multiple model types (e.g., Logistic Regression, LightGBM)
+    and can handle various preprocessing steps like imputation and encoding.
+    Results are logged both to console and to Neptune (if enabled) for each
+    model-outcome combination.
+	'''
     start_time = datetime.now()
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', help='runtime configurations', type=str)
@@ -95,53 +149,7 @@ def main():
     df_train = df_train.drop(columns=categorical)
     features = df_train.drop(columns=config['outcomes']).columns.tolist()
 
-    models = [
-            ('lr', lambda: LogisticRegression(solver='saga', max_iter=500)),
-            #('rf', lambda: RandomForestClassifier(n_estimators = 200, n_jobs=2)),
-            #('rf', lambda: RandomForestClassifier(n_jobs=2)),
-            #('xgb', lambda: xgb.XGBClassifier(n_estimators = 200, use_label_encoder=False, eta=0.05, nthread=2,eval_metric='auc')),
-            #('xgb', lambda: xgb.XGBClassifier(nthread=2, use_label_encoder=False, eval_metric='auc')),
-            ('lgbm', lambda: LGBMClassifier()),#metric='auc')),
-            ]
-    optuna_choice = optuna.distributions.CategoricalDistribution
-    distributions = {
-                #'lr':{'C': np.logspace(-4,2,20), 'penalty':['l2', 'l1']},
-                'lr':{
-                        'C': optuna.distributions.LogUniformDistribution(1e-3, 100),
-                        'penalty':optuna_choice(['l2', 'l1', 'elasticnet', 'none']),
-                        'l1_ratio':optuna_choice([0.1, 0.2, 0.5, 0.7, 0.9]),
-                        },
-                'rf': {
-                    "n_estimators": optuna_choice([10, 50, 100, 500]),
-                    #"max_depth": (2, 10)
-                    "max_depth": optuna_choice([3, 4, 5, 8, 10]),
-                    'max_features': optuna_choice(['auto', 'sqrt', 'log2']),
-                    'criterion':optuna_choice(['gini', 'entropy']),
-                     'min_samples_leaf': optuna_choice([1, 2, 4]),
-                    },
-                'lgbm': {
-                    #"boosting": optuna_choice(['gbdt', 'dart', 'goss']),
-                    #'min_sum_hessian_in_leaf': optuna_choice(['min_sum_hessian_per_leaf', 'min_sum_hessian', 'min_hessian', 'min_child_weight']),
-                    #"bagging_fraction": optuna_choice(['subs_row','subsample', 'bagging']),
-                    'max_depth': optuna.distributions.IntUniformDistribution(3, 30),
-                    'feature_fraction': optuna.distributions.UniformDistribution(0.1, 1.0),
-                    'learning_rate': optuna.distributions.LogUniformDistribution(0.005, 0.6),
-                    #'num_leaves': optuna.distributions.IntLogUniformDistribution(10, 300),
-                    'num_leaves': optuna.distributions.IntUniformDistribution(10, 300),
-                    "subsample": optuna_choice([0.6, 0.8, 1.0]),
-                    "reg_alpha": optuna.distributions.UniformDistribution(0.01, 9),
-                    "reg_lambda": optuna.distributions.UniformDistribution(0.01, 9),
-                    #"reg_alpha": optuna.distributions.LogUniformDistribution(0.01, 9),
-                    #"reg_lambda": optuna.distributions.LogUniformDistribution(0.01, 9),
-                    }
-                }
-
-
-    def precision_recall_auc(estimator, x, y_test):
-        y_preds = estimator.predict_proba(x)[:,1]
-        precision, recall, thresholds = metrics.precision_recall_curve(y_test, y_preds)
-        r = metrics.auc(precision, recall)
-        return r
+    models, distributions = get_models_and_distributions()
 
     net_ece = netcal_metrics.ECE(10)
 
@@ -226,25 +234,7 @@ def main():
                 else:
                     preds = model.predict(x_val)
 
-                _roc = metrics.roc_auc_score(y_val, preds_prob)
-                _f1 = metrics.f1_score(y_val, preds)
-                _acc = metrics.accuracy_score(y_val, preds)
-
-                #preds_prob = model.predict_proba(X_test)
-                #preds = model.predict(X_test)
-                #_roc = metrics.roc_auc_score(Y_test, preds_prob[:,1])
-                #_f1 = metrics.f1_score(Y_test, preds)
-                #_acc = metrics.accuracy_score(Y_test, preds)
-
-                precision, recall, thresholds = metrics.precision_recall_curve(y_val, preds_prob)
-                r = metrics.auc(recall, precision)
-
-                scores['roc'].append(_roc)
-                scores['f1'].append(_f1)
-                scores['acc'].append(_acc)
-                scores['pr_auc'].append(r)
-                scores['ece'].append(ece_score(preds_prob_vec, y_val))
-                #scores['netcal_ece'].append(net_ece.measure(preds_prob_vec, y_val))
+                update_scores(scores, y_val, preds, preds_prob)
             
                 y_truth.append(y_val)
                 y_preds.append(preds)
@@ -274,7 +264,7 @@ def main():
             pickle.dump(params_set, 
                     open(f'params_{y_variable}_{model_name}.pk', 'wb'))
 
-    print(datetime.now() - start_time)
+    print(f"Total execution time: {datetime.now() - start_time}")
 
 if __name__ == "__main__":
     main()
